@@ -218,183 +218,156 @@ ascat.runAscat = function(ASCATobj, gamma = 0.55, pdfPlot = FALSE, y_limit = 5, 
 #' @import RColorBrewer
 #'
 #' @export
-runASCAT = function(lrr, baf, lrrsegmented, bafsegmented, gender, SNPpos, chromosomes, chrnames, sexchromosomes, failedqualitycheck = FALSE,
-                    distancepng = NA, copynumberprofilespng = NA, nonroundedprofilepng = NA, aberrationreliabilitypng = NA, gamma = 0.55,
-                    rho_manual = NA, psi_manual = NA, pdfPlot = FALSE, y_limit = 5, circos=NA, min_ploidy=1.5, max_ploidy=5.5, min_purity=0.1,
-                    max_purity=1.05, X_nonPAR=NULL) {
+runASCAT  <-  function(lrr, baf, lrrsegmented, bafsegmented, gender, SNPpos,
+                       chromosomes, chrnames, sexchromosomes, failedqualitycheck = F,
+                       distancepng = NA, copynumberprofilespng = NA, nonroundedprofilepng = NA,
+                       aberrationreliabilitypng = NA, gamma = 0.55,
+                       rho_manual = NA, psi_manual = NA, pdfPlot = F, y_limit = 5, circos=NA, min_ploidy=1.5,
+                       max_ploidy=5.5, min_purity=0.1,
+                       max_purity=1.05, X_nonPAR=NULL) {
   ch = chromosomes
   chrs = chrnames
   b = bafsegmented
   r = lrrsegmented[names(bafsegmented)]
-
-  SNPposhet = SNPpos[as.numeric(names(bafsegmented)), ]
-  autoprobes = !(SNPposhet[, 1] %in% sexchromosomes)
-
-  b2 = b[autoprobes]
+    SNPposhet = SNPpos[names(bafsegmented),]
+  autoprobes = !(SNPposhet[,1]%in%sexchromosomes)
+    b2 = b[autoprobes]
   r2 = r[autoprobes]
-
-  s = make_segments(r2, b2)
+    s = make_segments(r2,b2)
   d = create_distance_matrix(s, gamma, min_ploidy=min_ploidy, max_ploidy=max_ploidy, min_purity=min_purity, max_purity=max_purity)
   plot_d=d
-
-  TheoretMaxdist = sum(rep(0.25, dim(s)[1]) * s[, "length"] * ifelse(s[, "b"]==0.5, 0.05, 1), na.rm=TRUE)
-
-  # flag the sample as non-aberrant if necessary
-  nonaberrant = FALSE
+    TheoretMaxdist = sum(rep(0.25,dim(s)[1]) * s[,"length"] * ifelse(s[,"b"]==0.5,0.05,1),na.rm=T)
+    # flag the sample as non-aberrant if necessary
+  nonaberrant = F
   MINABB = 0.03
   MINABBREGION = 0.005
-
-  percentAbb = sum(ifelse(s[, "b"]==0.5, 0, 1)*s[, "length"])/sum(s[, "length"])
-  maxsegAbb = max(ifelse(s[, "b"]==0.5, 0, s[, "length"]))/sum(s[, "length"])
-  if (percentAbb <= MINABB && maxsegAbb <= MINABBREGION) {
-    nonaberrant = TRUE
+    percentAbb = sum(ifelse(s[,"b"]==0.5,0,1)*s[,"length"])/sum(s[,"length"])
+  maxsegAbb = max(ifelse(s[,"b"]==0.5,0,s[,"length"]))/sum(s[,"length"])
+  if(percentAbb <= MINABB & maxsegAbb <= MINABBREGION) {
+    nonaberrant = T
   }
-
-
-  MINPLOIDY = min_ploidy
+    MINPLOIDY = min_ploidy
   MAXPLOIDY = max_ploidy
-  MINRHO = 0.1
-  MINGOODNESSOFFIT = 80
+  MINRHO = 0.2
+  MINGOODNESSOFFIT = 50
   MINPERCZERO = 0.02
   MINPERCZEROABB = 0.1
   MINPERCODDEVEN = 0.05
   MINPLOIDYSTRICT = 1.7
   MAXPLOIDYSTRICT = 2.3
-
-  nropt = 0
+    nropt = 0
   localmin = NULL
   optima = list()
-
-  if (!failedqualitycheck && is.na(rho_manual)) {
-
-    # first, try with all filters
+    if(!failedqualitycheck && is.na(rho_manual)) {
+        # first, try with all filters
     for (i in 4:(dim(d)[1]-3)) {
       for (j in 4:(dim(d)[2]-3)) {
-        m = d[i, j]
-        seld = d[(i-3):(i+3), (j-3):(j+3)]
-        seld[4, 4] = max(seld)
-        if (min(seld) > m) {
+        m = d[i,j]
+        seld = d[(i-3):(i+3),(j-3):(j+3)]
+        seld[4,4] = max(seld)
+        if(min(seld) > m) {
           psi = as.numeric(rownames(d)[i])
           rho = as.numeric(colnames(d)[j])
-          nA = (rho-1 - (s[, "b"]-1)*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-          nB = (rho-1 + s[, "b"]*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-
-          # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
-          ploidy = sum((nA+nB) * s[, "length"]) / sum(s[, "length"])
-
-          percentzero = (sum((round(nA)==0)*s[, "length"])+sum((round(nB)==0)*s[, "length"]))/sum(s[, "length"])
-
-          goodnessOfFit = (1-m/TheoretMaxdist) * 100
-
-          if (!nonaberrant && ploidy > MINPLOIDY && ploidy < MAXPLOIDY && rho >= MINRHO && goodnessOfFit > MINGOODNESSOFFIT && percentzero > MINPERCZERO) {
+          nA = (rho-1-(s[,"b"]-1)*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+          nB = (rho-1+s[,"b"]*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+                    # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
+          ploidy = sum((nA+nB) * s[,"length"]) / sum(s[,"length"]);
+                    percentzero = (sum((round(nA)==0)*s[,"length"])+sum((round(nB)==0)*s[,"length"]))/sum(s[,"length"])
+                    goodnessOfFit = (1-m/TheoretMaxdist) * 100
+                    if (!nonaberrant & ploidy > MINPLOIDY & ploidy < MAXPLOIDY & rho >= MINRHO & goodnessOfFit > MINGOODNESSOFFIT & percentzero > MINPERCZERO) {
             nropt = nropt + 1
-            optima[[nropt]] = c(m, i, j, ploidy, goodnessOfFit)
+            optima[[nropt]] = c(m,i,j,ploidy,goodnessOfFit)
             localmin[nropt] = m
           }
         }
       }
     }
-
-    # if no solution, drop the percentzero > MINPERCZERO filter (allow non-aberrant solutions - but limit the ploidy options)
+                                        # if no solution, drop the percentzero > MINPERCZERO filter (allow non-aberrant solutions - but limit the ploidy options)
     if (nropt == 0  && MINPLOIDY < MAXPLOIDYSTRICT && MAXPLOIDY > MINPLOIDYSTRICT) {
       for (i in 4:(dim(d)[1]-3)) {
         for (j in 4:(dim(d)[2]-3)) {
-          m = d[i, j]
-          seld = d[(i-3):(i+3), (j-3):(j+3)]
-          seld[4, 4] = max(seld)
-          if (min(seld) > m) {
+          m = d[i,j]
+          seld = d[(i-3):(i+3),(j-3):(j+3)]
+          seld[4,4] = max(seld)
+          if(min(seld) > m) {
             psi = as.numeric(rownames(d)[i])
             rho = as.numeric(colnames(d)[j])
-            nA = (rho-1 - (s[, "b"]-1)*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-            nB = (rho-1 + s[, "b"]*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-
-            # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
-            ploidy = sum((nA+nB) * s[, "length"]) / sum(s[, "length"])
-
-            perczeroAbb = (sum((round(nA)==0)*s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1))+sum((round(nB)==0)*s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1)))/sum(s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1))
+            nA = (rho-1-(s[,"b"]-1)*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+            nB = (rho-1+s[,"b"]*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+                        # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
+            ploidy = sum((nA+nB) * s[,"length"]) / sum(s[,"length"]);
+                        perczeroAbb = (sum((round(nA)==0)*s[,"length"]*ifelse(s[,"b"]==0.5,0,1))+sum((round(nB)==0)*s[,"length"]*ifelse(s[,"b"]==0.5,0,1)))/sum(s[,"length"]*ifelse(s[,"b"]==0.5,0,1))
             # the next can happen if BAF is a flat line at 0.5
             if (is.na(perczeroAbb)) {
               perczeroAbb = 0
             }
-
-            goodnessOfFit = (1-m/TheoretMaxdist) * 100
-
-            if (ploidy > MINPLOIDYSTRICT && ploidy < MAXPLOIDYSTRICT && rho >= MINRHO && goodnessOfFit > MINGOODNESSOFFIT && perczeroAbb > MINPERCZEROABB) {
+                        goodnessOfFit = (1-m/TheoretMaxdist) * 100
+                        if (ploidy > MINPLOIDYSTRICT & ploidy < MAXPLOIDYSTRICT & rho >= MINRHO & goodnessOfFit > MINGOODNESSOFFIT & perczeroAbb > MINPERCZEROABB) {
               nropt = nropt + 1
-              optima[[nropt]] = c(m, i, j, ploidy, goodnessOfFit)
+              optima[[nropt]] = c(m,i,j,ploidy,goodnessOfFit)
               localmin[nropt] = m
             }
           }
         }
       }
     }
-
-    # if still no solution, allow solutions with 100% aberrant cells (include the borders with rho = 1), but in first instance, keep the percentzero > 0.01 filter
+        # if still no solution, allow solutions with 100% aberrant cells (include the borders with rho = 1), but in first instance, keep the percentzero > 0.01 filter
     if (nropt == 0) {
       #first, include borders
       cold = which(as.numeric(colnames(d))>1)
-      d[, cold]=1E20
+      d[,cold]=1E20
       for (i in 4:(dim(d)[1]-3)) {
         for (j in 4:(dim(d)[2]-3)) {
-          m = d[i, j]
-          seld = d[(i-3):(i+3), (j-3):(j+3)]
-          seld[4, 4] = max(seld)
-          if (min(seld) > m) {
+          m = d[i,j]
+          seld = d[(i-3):(i+3),(j-3):(j+3)]
+          seld[4,4] = max(seld)
+          if(min(seld) > m) {
             psi = as.numeric(rownames(d)[i])
             rho = as.numeric(colnames(d)[j])
-            nA = (rho-1 - (s[, "b"]-1)*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-            nB = (rho-1 + s[, "b"]*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-
-            # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
-            ploidy = sum((nA+nB) * s[, "length"]) / sum(s[, "length"])
-
-            percentzero = (sum((round(nA)==0)*s[, "length"])+sum((round(nB)==0)*s[, "length"]))/sum(s[, "length"])
-            percOddEven = sum((round(nA) %% 2 == 0 & round(nB) %% 2 == 1 | round(nA) %% 2 == 1 & round(nB) %% 2 == 0)*s[, "length"])/sum(s[, "length"])
-            perczeroAbb = (sum((round(nA)==0)*s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1))+sum((round(nB)==0)*s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1)))/sum(s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1))
+            nA = (rho-1-(s[,"b"]-1)*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+            nB = (rho-1+s[,"b"]*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+                        # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
+            ploidy = sum((nA+nB) * s[,"length"]) / sum(s[,"length"]);
+                        percentzero = (sum((round(nA)==0)*s[,"length"])+sum((round(nB)==0)*s[,"length"]))/sum(s[,"length"])
+            percOddEven = sum((round(nA)%%2==0&round(nB)%%2==1|round(nA)%%2==1&round(nB)%%2==0)*s[,"length"])/sum(s[,"length"])
+            perczeroAbb = (sum((round(nA)==0)*s[,"length"]*ifelse(s[,"b"]==0.5,0,1))+sum((round(nB)==0)*s[,"length"]*ifelse(s[,"b"]==0.5,0,1)))/sum(s[,"length"]*ifelse(s[,"b"]==0.5,0,1))
             if (is.na(perczeroAbb)) {
               perczeroAbb = 0
             }
-
-            goodnessOfFit = (1-m/TheoretMaxdist) * 100
-
-            if (!nonaberrant && ploidy > MINPLOIDY && ploidy < MAXPLOIDY && rho >= MINRHO && goodnessOfFit > MINGOODNESSOFFIT &&
-                  (perczeroAbb > MINPERCZEROABB || percentzero > MINPERCZERO || percOddEven > MINPERCODDEVEN)) {
+                        goodnessOfFit = (1-m/TheoretMaxdist) * 100
+                        if (!nonaberrant & ploidy > MINPLOIDY & ploidy < MAXPLOIDY & rho >= MINRHO & goodnessOfFit > MINGOODNESSOFFIT &
+                (perczeroAbb > MINPERCZEROABB | percentzero > MINPERCZERO | percOddEven > MINPERCODDEVEN)) {
               nropt = nropt + 1
-              optima[[nropt]] = c(m, i, j, ploidy, goodnessOfFit)
+              optima[[nropt]] = c(m,i,j,ploidy,goodnessOfFit)
               localmin[nropt] = m
             }
           }
         }
       }
     }
-
-    # if still no solution, drop the percentzero > MINPERCENTZERO filter, but strict ploidy borders
+        # if still no solution, drop the percentzero > MINPERCENTZERO filter, but strict ploidy borders
     if (nropt == 0  && MINPLOIDY < MAXPLOIDYSTRICT && MAXPLOIDY > MINPLOIDYSTRICT) {
       for (i in 4:(dim(d)[1]-3)) {
         for (j in 4:(dim(d)[2]-3)) {
-          m = d[i, j]
-          seld = d[(i-3):(i+3), (j-3):(j+3)]
-          seld[4, 4] = max(seld)
-          if (min(seld) > m) {
+          m = d[i,j]
+          seld = d[(i-3):(i+3),(j-3):(j+3)]
+          seld[4,4] = max(seld)
+          if(min(seld) > m) {
             psi = as.numeric(rownames(d)[i])
             rho = as.numeric(colnames(d)[j])
-            nA = (rho-1 - (s[, "b"]-1)*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-            nB = (rho-1 + s[, "b"]*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-
-            # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
-            ploidy = sum((nA+nB) * s[, "length"]) / sum(s[, "length"])
-
-            perczeroAbb = (sum((round(nA)==0)*s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1))+sum((round(nB)==0)*s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1)))/sum(s[, "length"]*ifelse(s[, "b"]==0.5, 0, 1))
+            nA = (rho-1-(s[,"b"]-1)*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+            nB = (rho-1+s[,"b"]*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+                        # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
+            ploidy = sum((nA+nB) * s[,"length"]) / sum(s[,"length"]);
+                        perczeroAbb = (sum((round(nA)==0)*s[,"length"]*ifelse(s[,"b"]==0.5,0,1))+sum((round(nB)==0)*s[,"length"]*ifelse(s[,"b"]==0.5,0,1)))/sum(s[,"length"]*ifelse(s[,"b"]==0.5,0,1))
             # the next can happen if BAF is a flat line at 0.5
             if (is.na(perczeroAbb)) {
               perczeroAbb = 0
             }
-
-            goodnessOfFit = (1-m/TheoretMaxdist) * 100
-
-            if (ploidy > MINPLOIDYSTRICT && ploidy < MAXPLOIDYSTRICT && rho >= MINRHO && goodnessOfFit > MINGOODNESSOFFIT) {
+                        goodnessOfFit = (1-m/TheoretMaxdist) * 100
+                        if (ploidy > MINPLOIDYSTRICT & ploidy < MAXPLOIDYSTRICT & rho >= MINRHO & goodnessOfFit > MINGOODNESSOFFIT) {
               nropt = nropt + 1
-              optima[[nropt]] = c(m, i, j, ploidy, goodnessOfFit)
+              optima[[nropt]] = c(m,i,j,ploidy,goodnessOfFit)
               localmin[nropt] = m
             }
           }
@@ -402,117 +375,100 @@ runASCAT = function(lrr, baf, lrrsegmented, bafsegmented, gender, SNPpos, chromo
       }
     }
   }
-
-  if (!is.na(rho_manual)) {
-
-    rho = rho_manual
+    if (!is.na(rho_manual)) {
+        rho = rho_manual
     psi = psi_manual
-
-    nA = (rho-1 - (s[, "b"]-1)*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-    nB = (rho-1 + s[, "b"]*2^(s[, "r"]/gamma) * ((1-rho)*2+rho*psi))/rho
-
-    # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
-    ploidy = sum((nA+nB) * s[, "length"]) / sum(s[, "length"])
-
-    nMinor = NULL
-    if (sum(nA, na.rm=TRUE) < sum(nB, na.rm=TRUE)) {
+        nA = (rho-1-(s[,"b"]-1)*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+    nB = (rho-1+s[,"b"]*2^(s[,"r"]/gamma)*((1-rho)*2+rho*psi))/rho
+        # ploidy is recalculated based on results, to avoid bias (due to differences in normalization of LogR)
+    ploidy = sum((nA+nB) * s[,"length"]) / sum(s[,"length"]);
+        nMinor = NULL
+    if (sum(nA,na.rm=T) < sum(nB,na.rm=T)) {
       nMinor = nA
     } else {
       nMinor = nB
     }
-    m = sum(abs(nMinor - pmax(round(nMinor), 0))^2 * s[, "length"] * ifelse(s[, "b"]==0.5, 0.05, 1), na.rm=TRUE)
-
-    goodnessOfFit = (1-m/TheoretMaxdist) * 100
-
-    nropt = 1
-    optima[[1]] = c(m, rho, psi, ploidy, goodnessOfFit)
+    m = sum(abs(nMinor - pmax(round(nMinor),0))^2 * s[,"length"] * ifelse(s[,"b"]==0.5,0.05,1), na.rm=T)
+        goodnessOfFit = (1-m/TheoretMaxdist) * 100
+        nropt = 1
+    optima[[1]] = c(m,rho,psi,ploidy,goodnessOfFit)
     localmin[1] = m
-
   }
-
-
-  if (nropt>0) {
+    if (nropt>0) {
     if (is.na(rho_manual)) {
       optlim = sort(localmin)[1]
       for (i in 1:length(optima)) {
-        if (optima[[i]][1] == optlim) {
+        if(optima[[i]][1] == optlim) {
           psi_opt1 = as.numeric(rownames(d)[optima[[i]][2]])
           rho_opt1 = as.numeric(colnames(d)[optima[[i]][3]])
-          if (rho_opt1 > 1) {
+          if(rho_opt1 > 1) {
             rho_opt1 = 1
           }
-          #ploidy_opt1 = optima[[i]][4]
+          ploidy_opt1 = optima[[i]][4]
           goodnessOfFit_opt1 = optima[[i]][5]
         }
       }
     } else {
       rho_opt1 = optima[[1]][2]
       psi_opt1 = optima[[1]][3]
-      #ploidy_opt1 = optima[[1]][4]
+      ploidy_opt1 = optima[[1]][4]
       goodnessOfFit_opt1 = optima[[1]][5]
     }
   }
-
-  if (nropt>0) {
+    if(nropt>0) {
     #plot Sunrise
     if (!is.na(distancepng)) {
       png(filename = distancepng, width = 1000, height = 1000, res = 1000/7)
     }
-    ascat.plotSunrise(plot_d, psi_opt1, rho_opt1)
+    ascat.plotSunrise(plot_d,psi_opt1,rho_opt1)
     if (!is.na(distancepng)) {
       dev.off()
     }
-
-    rho = rho_opt1
+        rho = rho_opt1
     psi = psi_opt1
-    SNPposhet = SNPpos[as.numeric(names(bafsegmented)), ]
-    haploidchrs = unique(c(substring(gender, 1, 1), substring(gender, 2, 2)))
-    if (substring(gender, 1, 1)==substring(gender, 2, 2)) {
-      haploidchrs = setdiff(haploidchrs, substring(gender, 1, 1))
+    SNPposhet = SNPpos[names(bafsegmented),]
+    haploidchrs = unique(c(substring(gender,1,1),substring(gender,2,2)))
+    if(substring(gender,1,1)==substring(gender,2,2)) {
+      haploidchrs = setdiff(haploidchrs,substring(gender,1,1))
     }
-    diploidprobes = !(SNPposhet[, 1] %in% haploidchrs)
-    if (!is.null(X_nonPAR) && gender=="XY") diploidprobes=diploidprobes_fixnonPAR(diploidprobes, SNPposhet, X_nonPAR, paste0(r, "/", b[, 1]))
-    nullchrs = setdiff(sexchromosomes, unique(c(substring(gender, 1, 1), substring(gender, 2, 2))))
-    nullprobes = SNPposhet[, 1] %in% nullchrs
-
-    nAfull = ifelse(diploidprobes,
-                    (rho-1 - (b-1)*2^(r/gamma) * ((1-rho)*2+rho*psi))/rho,
-                    ifelse(nullprobes, 0,
-                           ifelse(b<0.5, (rho-1 + ((1-rho)*2+rho*psi)*2^(r/gamma))/rho, 0)))
+    diploidprobes = !(SNPposhet[,1]%in%haploidchrs)
+    if (!is.null(X_nonPAR) && gender=='XY') diploidprobes=diploidprobes_fixnonPAR(diploidprobes,SNPposhet,X_nonPAR,paste0(r,'/',b[,1]))
+    nullchrs = setdiff(sexchromosomes,unique(c(substring(gender,1,1),substring(gender,2,2))))
+    nullprobes = SNPposhet[,1]%in%nullchrs
+        nAfull = ifelse(diploidprobes,
+                    (rho-1-(b-1)*2^(r/gamma)*((1-rho)*2+rho*psi))/rho,
+                    ifelse(nullprobes,0,
+                           ifelse(b<0.5,(rho-1+((1-rho)*2+rho*psi)*2^(r/gamma))/rho,0)))
     nBfull = ifelse(diploidprobes,
-                    (rho-1+b*2^(r/gamma) * ((1-rho)*2+rho*psi))/rho,
-                    ifelse(nullprobes, 0,
-                           ifelse(b<0.5, 0, (rho-1 + ((1-rho)*2+rho*psi)*2^(r/gamma))/rho)))
-    nA = pmax(round(nAfull), 0)
-    nB = pmax(round(nBfull), 0)
-
-    if (!is.na(circos)) {
-      frame<-cbind(SNPposhet, nAfull, nBfull)
+                    (rho-1+b*2^(r/gamma)*((1-rho)*2+rho*psi))/rho,
+                    ifelse(nullprobes,0,
+                           ifelse(b<0.5,0,(rho-1+((1-rho)*2+rho*psi)*2^(r/gamma))/rho)))
+    nA = pmax(round(nAfull),0)
+    nB = pmax(round(nBfull),0)
+        if(!is.na(circos)){
+      frame<-cbind(SNPposhet,nAfull,nBfull)
       chrSegmA<-rle(frame$nAfull)
       chrSegmB<-rle(frame$nBfull)
-      if (all(chrSegmA$lengths==chrSegmB$lengths)) {
+      if(all(chrSegmA$lengths==chrSegmB$lengths)){
         start=1
-        for (i in 1:length(chrSegmA$values)) {
+        for(i in 1:length(chrSegmA$values)){
           valA<-chrSegmA$values[i]
           valB<-chrSegmB$values[i]
           size<-chrSegmA$lengths[i]
-          write(c(paste("hs", frame[start, 1], sep=""), frame[start, 2], frame[(start+size-1), 2], valA), file = paste(circos, "_major", sep=""), ncolumns = 4, append = TRUE, sep = "\t")
-          write(c(paste("hs", frame[start, 1], sep=""), frame[start, 2], frame[(start+size-1), 2], valB), file = paste(circos, "_minor", sep=""), ncolumns = 4, append = TRUE, sep = "\t")
+          write(c(paste("hs",frame[start,1],sep=""),frame[start,2],frame[(start+size-1),2],valA), file = paste(circos,"_major",sep=""), ncolumns = 4, append = TRUE, sep = "\t")
+          write(c(paste("hs",frame[start,1],sep=""),frame[start,2],frame[(start+size-1),2],valB), file = paste(circos,"_minor",sep=""), ncolumns = 4, append = TRUE, sep = "\t")
           start=start+size
         }
-      } else {
+      } else{
         print("Major and minor allele copy numbers are segmented differently.")
       }
     }
-
-    rho = rho_opt1
+        rho = rho_opt1
     psi = psi_opt1
-
-    diploidprobes = !(SNPpos[[1]] %in% haploidchrs)
-    if (!is.null(X_nonPAR) && gender=="XY") diploidprobes=diploidprobes_fixnonPAR(diploidprobes, SNPpos, X_nonPAR, lrrsegmented)
-    nullprobes = SNPpos[[1]] %in% nullchrs
-
-    #this replaces an occurrence of unique that caused problems
+    diploidprobes = !(SNPpos[,1]%in%haploidchrs)
+    if (!is.null(X_nonPAR) && gender=='XY') diploidprobes=diploidprobes_fixnonPAR(diploidprobes,SNPpos,X_nonPAR,lrrsegmented)
+    nullprobes = SNPpos[,1]%in%nullchrs
+        #this replaces an occurrence of unique that caused problems
     #introduces segment spanning over chr ends, when two consecutive probes from diff chr have same logR!
     # build helping vector
     chrhelp = vector(length=length(lrrsegmented))
@@ -520,58 +476,48 @@ runASCAT = function(lrr, baf, lrrsegmented, bafsegmented, gender, SNPpos, chromo
       chrke = ch[[chrnr]]
       chrhelp[chrke] = chrnr
     }
-
-    tlr2 = rle(lrrsegmented)
+        tlr2 = rle(lrrsegmented)
     tlr.chr= rle(chrhelp)
-
-    tlrstart = c(1, cumsum(tlr2$lengths)+1)
+        tlrstart = c(1,cumsum(tlr2$lengths)+1)
     tlrstart = tlrstart[1:(length(tlrstart)-1)]
     tlrend = cumsum(tlr2$lengths)
-
-    tlrstart.chr= c(1, cumsum(tlr.chr$lengths)+1)
+        tlrstart.chr= c(1,cumsum(tlr.chr$lengths)+1)
     tlrstart.chr = tlrstart.chr[1:(length(tlrstart.chr)-1)]
     tlrend.chr = cumsum(tlr.chr$lengths)
-
-    tlrend<-sort(union(tlrend, tlrend.chr))
+        tlrend<-sort(union(tlrend, tlrend.chr))
     tlrstart<-sort(union(tlrstart, tlrstart.chr))
-
-    tlr=NULL
-    for (ind in tlrstart) {
+        tlr=NULL
+    for(ind in tlrstart){
       val<-lrrsegmented[ind]
       tlr<-c(tlr, val)
     }
-
-    # For each LRR probe, find the matching BAF probe
+        # For each LRR probe, find the matching BAF probe
     # and its position in bafsegmented
     probeLookup = data.frame(
       lrrprobe = names(lrrsegmented),
       bafpos = match(names(lrrsegmented), names(bafsegmented)),
-      stringsAsFactors=FALSE
+      stringsAsFactors=F
     )
-
-    seg = NULL
+        seg = NULL
     for (i in 1:length(tlr)) {
       logR = tlr[i]
       #pr = which(lrrsegmented==logR) # this was a problem
       pr = tlrstart[i]:tlrend[i]
       start = min(pr)
       end = max(pr)
-
-      bafpos = probeLookup$bafpos[pr]
+            bafpos = probeLookup$bafpos[pr]
       bafpos = bafpos[!is.na(bafpos)]
       bafke  = bafsegmented[bafpos][1]
-
-      #if bafke is NA, this means that we are dealing with a germline homozygous stretch with a copy number change within it.
+            #if bafke is NA, this means that we are dealing with a germline homozygous stretch with a copy number change within it.
       #in this case, nA and nB are irrelevant, just their sum matters
-      if (is.na(bafke)) {
+      if(is.na(bafke)) {
         bafke=0
       }
-
-      nAraw = ifelse(diploidprobes[start],
-                     (rho-1 - (bafke-1)*2^(logR/gamma) * ((1-rho)*2+rho*psi)) / rho,
-                     ifelse(nullprobes[start], 0,
-                            (rho-1 + ((1-rho)*2+rho*psi)*2^(logR/gamma))/rho))
-      nBraw = ifelse(diploidprobes[start], (rho-1+bafke*2^(logR/gamma) * ((1-rho)*2+rho*psi))/rho, 0)
+            nAraw = ifelse(diploidprobes[start],
+                     (rho-1-(bafke-1)*2^(logR/gamma)*((1-rho)*2+rho*psi))/rho,
+                     ifelse(nullprobes[start],0,
+                            (rho-1+((1-rho)*2+rho*psi)*2^(logR/gamma))/rho))
+      nBraw = ifelse(diploidprobes[start],(rho-1+bafke*2^(logR/gamma)*((1-rho)*2+rho*psi))/rho,0)
       # correct for negative values:
       if (nAraw+nBraw<0) {
         nAraw = 0
@@ -600,163 +546,146 @@ runASCAT = function(lrr, baf, lrrsegmented, bafsegmented, gender, SNPpos, chromo
                                 round(nBraw))),
                   round(nBraw))
       if (is.null(seg)) {
-        seg = t(as.matrix(c(start, end, nA, nB)))
-        seg_raw = t(as.matrix(c(start, end, nA, nB, nAraw, nBraw)))
+        seg = t(as.matrix(c(start,end,nA,nB)))
+        seg_raw = t(as.matrix(c(start,end,nA,nB,nAraw,nBraw)))
       } else {
-        seg = rbind(seg, c(start, end, nA, nB))
-        seg_raw = rbind(seg_raw, c(start, end, nA, nB, nAraw, nBraw))
+        seg = rbind(seg,c(start,end,nA,nB))
+        seg_raw = rbind(seg_raw,c(start,end,nA,nB,nAraw,nBraw))
       }
     }
-    colnames(seg)=c("start", "end", "nA", "nB")
-    colnames(seg_raw)=c("start", "end", "nA", "nB", "nAraw", "nBraw")
-
-    # every repeat joins 2 ends. 20 repeats will join about 1 million ends..
+    colnames(seg)=c("start","end","nA","nB")
+    colnames(seg_raw)=c("start","end","nA","nB","nAraw","nBraw")
+                                           # every repeat joins 2 ends. 20 repeats will join about 1 million ends..
     for (rep in 1:20) {
       seg2=seg
       seg = NULL
-      skipnext = FALSE
-      for (i in 1:dim(seg2)[1]) {
-        if (!skipnext) {
-          if (i != dim(seg2)[1] && seg2[i, "nA"]==seg2[i+1, "nA"] && seg2[i, "nB"]==seg2[i+1, "nB"] &&
-                chrhelp[seg2[i, "end"]]==chrhelp[seg2[i+1, "start"]]) {
-            segline = c(seg2[i, "start"], seg2[i+1, "end"], seg2[i, 3:4])
-            skipnext = TRUE
+      skipnext = F
+      for(i in 1:dim(seg2)[1]) {
+        if(!skipnext) {
+          if(i != dim(seg2)[1] && seg2[i,"nA"]==seg2[i+1,"nA"] && seg2[i,"nB"]==seg2[i+1,"nB"] &&
+             chrhelp[seg2[i,"end"]]==chrhelp[seg2[i+1,"start"]]) {
+            segline = c(seg2[i,"start"],seg2[i+1,"end"],seg2[i,3:4])
+            skipnext = T
           } else {
-            segline = seg2[i, ]
+            segline = seg2[i,]
           }
-
-          if (is.null(seg)) {
+                    if (is.null(seg)) {
             seg = t(as.matrix(segline))
           } else {
-            seg = rbind(seg, segline)
+            seg = rbind(seg,segline)
           }
         } else {
-          skipnext = FALSE
+          skipnext = F
         }
       }
       colnames(seg)=colnames(seg2)
     }
     rownames(seg)=NULL
-
-    nMajor = vector(length = length(lrrsegmented))
+        nMajor = vector(length = length(lrrsegmented))
     names(nMajor) = names(lrrsegmented)
     nMinor = vector(length = length(lrrsegmented))
     names(nMinor) = names(lrrsegmented)
-
-    for (i in 1:dim(seg)[1]) {
-      nMajor[seg[i, "start"]:seg[i, "end"]] = seg[i, "nA"]
-      nMinor[seg[i, "start"]:seg[i, "end"]] = seg[i, "nB"]
+        for (i in 1:dim(seg)[1]) {
+      nMajor[seg[i,"start"]:seg[i,"end"]] = seg[i,"nA"]
+      nMinor[seg[i,"start"]:seg[i,"end"]] = seg[i,"nB"]
     }
-
-    n1all = vector(length = length(lrrsegmented))
+        n1all = vector(length = length(lrrsegmented))
     names(n1all) = names(lrrsegmented)
     n2all = vector(length = length(lrrsegmented))
     names(n2all) = names(lrrsegmented)
-
-    # note: any of these can have length 0
+        # note: any of these can have length 0
     NAprobes = which(is.na(lrr))
-    heteroprobes = setdiff(which(names(lrrsegmented) %in% names(bafsegmented)), NAprobes)
-    homoprobes = setdiff(setdiff(which(!is.na(baf)), heteroprobes), NAprobes)
-    CNprobes = setdiff(which(is.na(baf)), NAprobes)
-
-    n1all[NAprobes] = NA
+    heteroprobes = setdiff(which(names(lrrsegmented)%in%names(bafsegmented)),NAprobes)
+    homoprobes = setdiff(setdiff(which(!is.na(baf)),heteroprobes),NAprobes)
+    CNprobes = setdiff(which(is.na(baf)),NAprobes)
+        n1all[NAprobes] = NA
     n2all[NAprobes] = NA
     n1all[CNprobes] = nMajor[CNprobes]+nMinor[CNprobes]
     n2all[CNprobes] = 0
     heteroprobes2 = names(lrrsegmented)[heteroprobes]
-    n1all[heteroprobes] = ifelse(baf[heteroprobes2]<=0.5, nMajor[heteroprobes], nMinor[heteroprobes])
-    n2all[heteroprobes] = ifelse(baf[heteroprobes2]>0.5, nMajor[heteroprobes], nMinor[heteroprobes])
-    n1all[homoprobes] = ifelse(baf[homoprobes]<=0.5, nMajor[homoprobes]+nMinor[homoprobes], 0)
-    n2all[homoprobes] = ifelse(baf[homoprobes]>0.5, nMajor[homoprobes]+nMinor[homoprobes], 0)
-
-    # plot nonrounded ASCAT profile
+    n1all[heteroprobes] = ifelse(baf[heteroprobes2]<=0.5,nMajor[heteroprobes], nMinor[heteroprobes])
+    n2all[heteroprobes] = ifelse(baf[heteroprobes2]>0.5,nMajor[heteroprobes], nMinor[heteroprobes])
+    n1all[homoprobes] = ifelse(baf[homoprobes]<=0.5,nMajor[homoprobes]+nMinor[homoprobes],0)
+    n2all[homoprobes] = ifelse(baf[homoprobes]>0.5,nMajor[homoprobes]+nMinor[homoprobes],0)
+        # plot nonrounded ASCAT profile
     if (is.na(nonroundedprofilepng)) {
-      dev.new(10, 5)
+      dev.new(10,5)
     } else {
-      if (pdfPlot) {
+      if(pdfPlot){
         pdf(file = nonroundedprofilepng, width = 20, height = y_limit, pointsize=20)
-      } else {
+      } else{
         png(filename = nonroundedprofilepng, width = 2000, height = (y_limit*100), res = 200)
       }
     }
-    ascat.plotNonRounded(mean(n1all+n2all, na.rm=TRUE), rho_opt1, goodnessOfFit_opt1, nonaberrant, nAfull, nBfull, y_limit, bafsegmented, ch, lrr, chrnames)
-
-    if (!is.na(nonroundedprofilepng)) {
+    ascat.plotNonRounded(mean(n1all+n2all,na.rm=T), rho_opt1, goodnessOfFit_opt1, nonaberrant, nAfull, nBfull, y_limit, bafsegmented, ch,lrr, chrnames)
+        if (!is.na(nonroundedprofilepng)) {
       dev.off()
     }
-
-    # plot ASCAT profile
+        # plot ASCAT profile
     if (is.na(copynumberprofilespng)) {
-      dev.new(10, 2.5)
+      dev.new(10,2.5)
     } else {
-      if (pdfPlot) {
+      if(pdfPlot){
         pdf(file = copynumberprofilespng, width = 20, height = y_limit, pointsize=20)
-      } else {
+      } else{
         png(filename = copynumberprofilespng, width = 2000, height = (y_limit*100), res = 200)
       }
     }
     #plot ascat profile
-    ascat.plotAscatProfile(n1all, n2all, heteroprobes, mean(n1all+n2all, na.rm=TRUE), rho_opt1, goodnessOfFit_opt1, nonaberrant, y_limit, ch, lrr, bafsegmented, chrnames)
-
-
-    if (!is.na(copynumberprofilespng)) {
+    ascat.plotAscatProfile(n1all, n2all, heteroprobes, mean(n1all+n2all,na.rm=T), rho_opt1, goodnessOfFit_opt1, nonaberrant,y_limit, ch, lrr, bafsegmented, chrnames)
+        if (!is.na(copynumberprofilespng)) {
       dev.off()
     }
-
-
-    if (!is.na(aberrationreliabilitypng)) {
+        if (!is.na(aberrationreliabilitypng)) {
       png(filename = aberrationreliabilitypng, width = 2000, height = 500, res = 200)
-      par(mar = c(0.5, 5, 5, 0.5), cex = 0.4, cex.main=3, cex.axis = 2.5)
-
-      diploidprobes = !(SNPposhet[, 1] %in% haploidchrs)
-      nullprobes = SNPposhet[, 1] %in% nullchrs
-
-      rBacktransform = ifelse(diploidprobes,
-                              gamma*log((rho * (nA+nB) + (1-rho)*2) / ((1-rho)*2+rho*psi), 2),
+      par(mar = c(0.5,5,5,0.5), cex = 0.4, cex.main=3, cex.axis = 2.5)
+            diploidprobes = !(SNPposhet[,1]%in%haploidchrs)
+      nullprobes = SNPposhet[,1]%in%nullchrs
+            rBacktransform = ifelse(diploidprobes,
+                              gamma*log((rho*(nA+nB)+(1-rho)*2)/((1-rho)*2+rho*psi),2),
                               # the value for nullprobes is arbitrary (but doesn't matter, as these are not plotted anyway because BAF=0.5)
-                              ifelse(nullprobes, -10, gamma*log((rho * (nA+nB) + (1-rho)) / ((1-rho)*2+rho*psi), 2)))
-
-      bBacktransform = ifelse(diploidprobes,
-                              (1-rho+rho*nB) / (2-2*rho+ rho * (nA+nB)),
-                              ifelse(nullprobes, 0.5, 0))
-
-      rConf = ifelse(abs(rBacktransform)>0.15, pmin(100, pmax(0, 100 * (1-abs(rBacktransform-r)/abs(r)))), NA)
-      bConf = ifelse(diploidprobes & bBacktransform!=0.5, pmin(100, pmax(0, ifelse(b==0.5, 100, 100 * (1-abs(bBacktransform-b)/abs(b-0.5))))), NA)
-      confidence = ifelse(is.na(rConf), bConf, ifelse(is.na(bConf), rConf, (rConf+bConf)/2))
-      maintitle = paste("Aberration reliability score (%), average: ", sprintf("%2.0f", mean(confidence, na.rm=TRUE)), "%", sep="")
-      plot(c(1, length(nAfull)), c(0, 100), type = "n", xaxt = "n", main = maintitle, xlab = "", ylab = "")
-      points(confidence, col="blue", pch = "|")
-      abline(v=0, lty=1, col="lightgrey")
+                              ifelse(nullprobes,-10,gamma*log((rho*(nA+nB)+(1-rho))/((1-rho)*2+rho*psi),2)))
+            bBacktransform = ifelse(diploidprobes,
+                              (1-rho+rho*nB)/(2-2*rho+rho*(nA+nB)),
+                              ifelse(nullprobes,0.5,0))
+            rConf = ifelse(abs(rBacktransform)>0.15,pmin(100,pmax(0,100*(1-abs(rBacktransform-r)/abs(r)))),NA)
+      bConf = ifelse(diploidprobes & bBacktransform!=0.5, pmin(100,pmax(0,ifelse(b==0.5,100,100*(1-abs(bBacktransform-b)/abs(b-0.5))))), NA)
+      confidence = ifelse(is.na(rConf),bConf,ifelse(is.na(bConf),rConf,(rConf+bConf)/2))
+      maintitle = paste("Aberration reliability score (%), average: ", sprintf("%2.0f",mean(confidence,na.rm=T)),"%",sep="")
+      plot(c(1,length(nAfull)), c(0,100), type = "n", xaxt = "n", main = maintitle, xlab = "", ylab = "")
+      points(confidence,col="blue",pch = "|")
+      abline(v=0,lty=1,col="lightgrey")
       chrk_tot_len = 0
       for (i in 1:length(ch)) {
-        chrk = ch[[i]]
-        chrk_hetero = intersect(names(lrr)[chrk], names(bafsegmented))
+        chrk = ch[[i]];
+        chrk_hetero = intersect(names(lrr)[chrk],names(bafsegmented))
         chrk_tot_len_prev = chrk_tot_len
         chrk_tot_len = chrk_tot_len + length(chrk_hetero)
-        vpos = chrk_tot_len
-        tpos = (chrk_tot_len+chrk_tot_len_prev)/2
-        text(tpos, 5, chrs[i], pos = 1, cex = 2)
-        abline(v=vpos, lty=1, col="lightgrey")
+        vpos = chrk_tot_len;
+        tpos = (chrk_tot_len+chrk_tot_len_prev)/2;
+        text(tpos,5,chrs[i], pos = 1, cex = 2)
+        abline(v=vpos,lty=1,col="lightgrey")
       }
       dev.off()
     }
-
-    return(list(rho = rho_opt1, psi = psi_opt1, goodnessOfFit = goodnessOfFit_opt1, nonaberrant = nonaberrant,
+        return(list(rho = rho_opt1, psi = psi_opt1, goodnessOfFit = goodnessOfFit_opt1, nonaberrant = nonaberrant,
                 nA = n1all, nB = n2all, seg = seg, seg_raw = seg_raw, distance_matrix = d))
-
-  } else {
-
-    name=gsub(".sunrise.png", "", basename(distancepng))
-
-    png(filename = distancepng, width = 1000, height = 1000, res = 1000/7)
-    ascat.plotSunrise(plot_d, 0, 0)
+      } else {
+        name=gsub(".sunrise.png","",basename(distancepng))
+      png(filename = distancepng, width = 1000, height = 1000, res = 1000/7)
+    ascat.plotSunrise(plot_d,0,0)
     dev.off()
-
     warning(paste("ASCAT could not find an optimal ploidy and purity value for sample ", name, ".\n", sep=""))
-    return(list(rho = NA, psi = NA, goodnessOfFit = NA, nonaberrant = FALSE, nA = NA, nB = NA, seg = NA, seg_raw = NA, distance_matrix = NA))
+    return(list(rho = NA, psi = NA, goodnessOfFit = NA, nonaberrant = F, nA = NA, nB = NA, seg = NA, seg_raw = NA, distance_matrix = NA))
   }
-
 }
+
+
+
+
+
+
+
 
 #' @title make_segments
 #' @description Function to make segments of constant LRR and BAF.\cr
@@ -834,6 +763,8 @@ create_distance_matrix = function(segments, gamma, min_ploidy=NULL, max_ploidy=N
   }
   return(d)
 }
+
+
 
 #' Function to fix diploidprobes for X based on nonPAR and segmentation (males only).
 #' Setting diploidprobes to TRUE for PAR regions would generate an issue whenever a segment spans both PAR and nonPAR regions.

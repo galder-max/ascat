@@ -1,0 +1,157 @@
+generateLogRBAF.files <- function(OUTDIR,
+                                  SAMPLES,
+                                  BAF.files,
+                                  LogR.files,
+                                  BAFin.final,
+                                  LogRin.final,
+                                  BAFMerge,
+                                  LogRMerge,
+                                  BAFinMerge,
+                                  LogRinMerge,
+                                  LOGR.more=NULL)
+{
+    bafs <- list()
+    for( SAMPLE in 1:length(SAMPLES))
+    {
+        BAFin <- fileBAF <- BAF.files[SAMPLE]
+        bafs[[SAMPLE]] <- as.data.frame(data.table::fread(BAFin))
+    }
+    bafs[[length(bafs)+1]] <- as.data.frame(data.table::fread(BAFMerge))
+    allopos <- table(do.call("c",lapply(bafs,"[[",1)))
+    allopos <- names(allopos)[allopos==(length(SAMPLES)+1)]
+    allopos <- allopos[allopos%in%rownames(logr.pon)]
+    BBB <- list()
+    LLL <- list()
+    for(i in 1:length(SAMPLES))
+    {
+        SAMPLE <- SAMPLES[i]
+        BAFin <- fileBAF <- BAF.files[i]
+        LogRin <- fileLOGR <- LogR.files[i]
+        BB <- as.data.frame(data.table::fread(BAFin))
+        LL <- as.data.frame(data.table::fread(LogRin))
+        rownames(BB) <- BB[,1]
+        rownames(LL) <- LL[,1]
+        LL <- LL[LL[,1]%in%allopos,]
+        BB <- BB[BB[,1]%in%allopos,]
+        BBB[[SAMPLE]] <- BB[,2:4]
+        LLL[[SAMPLE]] <- LL[,2:4]
+    }
+    BBBB <- data.frame(Chromosome=BBB[[1]][,1],
+                       Position=BBB[[1]][,2],
+                       do.call("cbind",lapply(BBB,function(x) x[,3])))
+    colnames(BBBB)[3:(length(SAMPLES)+2)] <- sapply(BBB,function(x) colnames(x)[3])
+    LLLL <- data.frame(Chromosome=LLL[[1]][,1],
+                       Position=LLL[[1]][,2],
+                       do.call("cbind",lapply(LLL,function(x) x[,3])))
+    colnames(LLLL)[3:(length(SAMPLES)+2)] <- sapply(LLL,function(x) colnames(x)[3])
+    rownames(LLLL) <- rownames(BBBB) <- rownames(BB)
+    ## ##################################################
+    write.table(LLLL,
+                file=gsub(".txt","intermed.txt",LogRin.final),
+                sep="\t",
+                col.names=T,
+                row.names=T,
+                quote=F)
+    write.table(BBBB,
+                file=BAFin.final,
+                sep="\t",
+                col.names=T,
+                row.names=T,
+                quote=F)
+    ## ##################################################
+    ## ##################################################
+    BB <- as.data.frame(data.table::fread(BAFMerge))
+    LL <- as.data.frame(data.table::fread(LogRMerge))
+    rownames(BB) <- BB[,1]
+    rownames(LL) <- LL[,1]
+    LL <- LL[LL[,1]%in%allopos,]
+    BB <- BB[BB[,1]%in%allopos,]
+    BBBB <- BB[,2:4]
+    LLLL <- LL[,2:4]
+    rownames(LLLL) <- rownames(BBBB) <- rownames(BB)
+    ## ##################################################
+    write.table(LLLL,
+                file=LogRinMerge,
+                sep="\t",
+                col.names=T,
+                row.names=T,
+                quote=F)
+    write.table(BBBB,
+                file=BAFinMerge,
+                sep="\t",
+                col.names=T,
+                row.names=T,
+                quote=F)
+    ## ##################################################
+    ## ##################################################
+    ## STEP0 - INTERMED OVERSEG ASCAT RUN for NOISE CORRECTION
+    ## ##################################################
+    if(FALSE){
+        ascat.bc  <-  ascat.loadData(LogRinMerge, BAFinMerge, NULL, NULL, gender=GENDER)
+        gg <- ascat.predictGermlineGenotypes(ascat.bc, platform = "HTC_30X+")
+        ## ##################################################
+        ascat.bc <- ascat.aspcf(ascat.bc, ascat.gg=gg, penalty = 70, out.prefix = "overseg")
+        ascat.plot <- ascat.plotSegmentedData(ascat.bc, img.prefix = "overseg")
+        ## ##################################################
+        ascat.output <- ascat.runAscat(ascat.bc, img.prefix = "overseg",
+                                       min_purity=.99, gamma=1)
+        if(is.null(ascat.output$segments))
+            ascat.output <- ascat.runAscat(ascat.bc, img.prefix = "overseg",
+                                           min_purity=.99,
+                                           gamma=1,
+                                           rho_manual = 1,## Change here if not running (solution does not matter at this stage)
+                                           psi_manual = 2) ## Change here if not running
+        if(is.null(ascat.output$segments))
+            ascat.output <- ascat.runAscat(ascat.bc, img.prefix = "overseg",
+                                           min_purity=.88,
+                                           gamma=1,
+                                           rho_manual = 1,## Change here if not running (solution does not matter at this stage)
+                                           psi_manual = 2.5) ## Change here if not running
+        if(is.null(ascat.output$segments))
+            stop("change rho_manual or psi_manual in function to make ascat run")
+        LOGRMERGE <- as.data.frame(data.table::fread(gsub(".txt","intermed.txt", LogRin.final)))
+        CORRECTLOGR <- getCorrectLogR(LOGRMERGE, ascat.output$segments_raw)
+    }
+    if(TRUE)
+    {
+        treatmerge = function(LOGRMERGE, allopos)
+        {
+            LOGRMERGE <- LOGRMERGE[allopos,]
+            for(i in 1:ncol(LOGRMERGE))
+            {
+                med <- median(LOGRMERGE[,i],na.rm=T)
+                LOGRMERGE[is.na(LOGRMERGE[,i]),i] <- med
+            }
+            LOGRMERGE
+        }
+        smoothNormals <- function(logr, logr.pon)
+        {
+            nisX = !grepl("^X_",rownames(logr.pon))
+            notalreadyinpanel <- sapply(1:ncol(logr.pon),function(x) cor(logr.pon[nisX,x],logr[nisX])>.99)
+            if(sum(notalreadyinpanel)>0) print(paste0(which(notalreadyinpanel)," already in panel"))
+            cat(".")
+            logr <- logr-median(logr)
+            predicted <- lm(y ~ . - 1,
+                            data = data.frame(y = logr,
+                                              X = logr.pon[, !notalreadyinpanel])-1)$fitted.values
+            logr <- logr-predicted
+            logr <- logr-median(logr)
+            logr
+        }
+        LOGRMERGE <- treatmerge(logr.pon,allopos)
+        lll <- as.data.frame(data.table::fread(gsub(".txt","intermed.txt", LogRin.final)))
+        rownames(lll) <- lll[,1]
+        lll <- lll[allopos,]
+        for(i in 4:ncol(lll)) lll[,i] <- smoothNormals(lll[,i],LOGRMERGE)
+        lll <- lll[,-c(1)]
+        write.table(lll,
+                    file=LogRin.final,
+                    sep="\t",
+                    col.names=T,
+                    row.names=T,
+                    quote=F)
+    }
+    ## ##################################################
+    ## END STEPINTERMED OVERSEG ASCAT RUN
+    ## ##################################################
+}

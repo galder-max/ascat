@@ -159,3 +159,36 @@ ascat.output = ascat.runAscat(ascat.bc, gamma=1, write_segments = TRUE)
 QC = ascat.metrics(ascat.bc,ascat.output)
 save(ascat.bc, ascat.output, QC, file = 'ASCAT_objects.Rdata')
 ```
+
+
+## WES with panel of normal (no need for matched normal)
+
+
+First run as you normally would to generate LogR and BAF
+files on both tumour and normal samples! 
+Visualise the LogR and BAF to identify clean diploid controls in your
+runs (ideally females but you can include males if needed). Collect
+the paths to their corresponding LogR files (PATH_LOGR_CONTROLS_FEMALES).
+
+Then run the following script on each individual tumour file:
+
+```R
+library(ASCAT)
+
+OUTDIR = "/PATH/TO/OUTPUTS/"
+
+setwd(OUTDIR)
+
+generate_PON_from_diploid_controls(PATH_LOGR_CONTROLS_FEMALES,## fullpathstologrfilesofdiploidcontrols
+                                   PATH_LOGR_CONTROLS_MALES=NULL,
+                                   NMAX=50,
+                                   FILEOUT = "pon.rda")
+
+runASCAT_WES(PATH_BAF,##fullpath to baf of your tumour sample
+             PATH_LOGR,##fullpath to logr of your tumour sample
+             PATH_PON="pon.rda",##fullpath to the panel of normal file
+             OUTDIR=OUTDIR,
+			 PENALTY=70,
+             GENDER="female")
+
+```

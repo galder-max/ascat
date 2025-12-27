@@ -23,21 +23,27 @@
 #'
 #' @export
 #'
-ascat.aspcf = function(ASCATobj, selectsamples = 1:length(ASCATobj$samples), ascat.gg = NULL, penalty = 70, out.dir=".", out.prefix="", seed=as.integer(Sys.time())) {
+ascat.aspcf <- function(ASCATobj,
+                        selectsamples = 1:length(ASCATobj$samples),
+                        ascat.gg = NULL, penalty = 70,
+                        out.dir=".", out.prefix="",
+                        seed=as.integer(Sys.time()))
+{
   set.seed(seed)
   # first, set germline genotypes
   gg = NULL
-  if (!is.null(ascat.gg)) {
-    gg = ascat.gg$germlinegenotypes
-  } else {
-    gg = ASCATobj$Germline_BAF < 0.3 | ASCATobj$Germline_BAF > 0.7
+  if (!is.null(ascat.gg))
+  {
+      gg = ascat.gg$germlinegenotypes
   }
-  # calculate germline homozygous stretches for later resegmentation
+  else
+  {
+      gg = ASCATobj$Germline_BAF < 0.3 | ASCATobj$Germline_BAF > 0.7
+  }
+  ## calculate germline homozygous stretches for later resegmentation
   ghs = predictGermlineHomozygousStretches(ASCATobj$chr, gg)
-
   segmentlengths = unique(c(penalty, 35, 50, 70, 100, 140))
   segmentlengths = segmentlengths[segmentlengths>=penalty]
-
   Tumor_LogR_segmented = matrix(nrow = dim(ASCATobj$Tumor_LogR)[1], ncol = dim(ASCATobj$Tumor_LogR)[2])
   rownames(Tumor_LogR_segmented) = rownames(ASCATobj$Tumor_LogR)
   colnames(Tumor_LogR_segmented) = colnames(ASCATobj$Tumor_LogR)
@@ -51,9 +57,9 @@ ascat.aspcf = function(ASCATobj, selectsamples = 1:length(ASCATobj$samples), asc
     # specific process for nonPAR in males
     if (!is.null(ASCATobj$X_nonPAR) && ASCATobj$gender[sample]=="XY") {
       # select SNPs with non-NA BAF values in nonPAR region
-      nonPAR_index=which(ASCATobj$SNPpos[[1]] %in% c("chrX", "X") & ASCATobj$SNPpos[, 2]>=ASCATobj$X_nonPAR[1] & ASCATobj$SNPpos[, 2]<=ASCATobj$X_nonPAR[2] & !is.na(gg[, sample]))
+      nonPAR_index=which(ASCATobj$SNPpos[, 1] %in% c("chrX", "X") & ASCATobj$SNPpos[, 2]>=ASCATobj$X_nonPAR[1] & ASCATobj$SNPpos[, 2]<=ASCATobj$X_nonPAR[2] & !is.na(gg[, sample]))
       # store hmz/htz information for autosomes
-      autosomes_info=table(gg[which(ASCATobj$SNPpos[[1]] %in% setdiff(ASCATobj$chrs, ASCATobj$sexchromosomes)), sample])
+      autosomes_info=table(gg[which(ASCATobj$SNPpos[, 1] %in% setdiff(ASCATobj$chrs, ASCATobj$sexchromosomes)), sample])
       if (length(nonPAR_index)>5) {
         # set all to hmz
         gg[nonPAR_index, sample]=TRUE
@@ -116,18 +122,22 @@ ascat.aspcf = function(ASCATobj, selectsamples = 1:length(ASCATobj$samples), asc
             logRASPCF = rep(mean(logRaveraged), length(logRaveraged))
             bafASPCF = rep(mean(bafselwinsmirrored), length(logRaveraged))
             if ("isTargetedSeq" %in% names(ASCATobj) && ASCATobj$isTargetedSeq && bafASPCF[1]<=0.55) bafASPCF=rep(0.5, length(logRaveraged))
-          } else {
-            PCFed = fastAspcf(logRaveraged, bafselwins, 6, segmentlength, ASCATobj$isTargetedSeq)
+            #if (bafASPCF[1]<=0.55) bafASPCF=rep(0.5, length(logRaveraged))
+          }
+          else
+          {
+            PCFed = fastAspcf(logRaveraged, bafselwins, 6, segmentlength, ASCATobj$isTargetedSeq, tbsam[!gg])
             logRASPCF = PCFed$yhat1
             bafASPCF = PCFed$yhat2
           }
           names(bafASPCF)=names(indices)
+##############################################################################
           logRc = numeric(0)
           for (probe in 1:length(logRASPCF)) {
             if (probe == 1) {
               logRc = rep(logRASPCF[probe], indices[probe])
             }
-            # if probe is 1, set the beginning, and let the loop go:
+            ## if probe is 1, set the beginning, and let the loop go:
             if (probe == length(logRASPCF)) {
               logRc = c(logRc, rep(logRASPCF[probe], length(lr)-indices[probe]))
             } else if (logRASPCF[probe]==logRASPCF[probe+1]) {
@@ -139,14 +149,18 @@ ascat.aspcf = function(ASCATobj, selectsamples = 1:length(ASCATobj$samples), asc
               for (bp in 0:(totall-1)) {
                 dis = sum(abs(lr[(1:bp)+indices[probe]]-logRASPCF[probe]), na.rm=TRUE)
                 if (bp!=totall) {
-                  dis = sum(dis, sum(abs(lr[((bp+1):totall)+indices[probe]]-logRASPCF[probe+1]), na.rm=TRUE), na.rm=TRUE)
+                    dis = sum(dis,
+                              sum(abs(lr[((bp+1):totall)+indices[probe]]-logRASPCF[probe+1]), na.rm=TRUE), na.rm=TRUE)
                 }
                 d = c(d, dis)
               }
               breakpoint = which.min(d)-1
-              logRc = c(logRc, rep(logRASPCF[probe], breakpoint), rep(logRASPCF[probe+1], totall-breakpoint))
+                logRc = c(logRc,
+                          rep(logRASPCF[probe], breakpoint),
+                          rep(logRASPCF[probe+1], totall-breakpoint))
             }
           }
+##############################################################################
           #2nd step: adapt levels!
           logRd = numeric(0)
           seg = rle(logRc)$lengths
@@ -206,7 +220,6 @@ ascat.aspcf = function(ASCATobj, selectsamples = 1:length(ASCATobj$samples), asc
       #fill in NAs (otherwise they cause problems):
       #some NA probes are filled in with zero, replace those too:
       logRPCFed = fillNA(logRPCFed, zeroIsNA=TRUE)
-
       #adapt levels again
       seg = rle(logRPCFed)$lengths
       logRPCFed = numeric(0)
@@ -227,25 +240,25 @@ ascat.aspcf = function(ASCATobj, selectsamples = 1:length(ASCATobj$samples), asc
       }
       #put in names and write results to files
       names(logRPCFed) = rownames(ASCATobj$Tumor_LogR)
-
       # if less than 800 segments: this segmentlength is ok, otherwise, rerun with higher segmentlength
       if (length(unique(logRPCFed))<800) {
         break
       }
     }
-
     if (!is.na(out.dir)) write.table(logRPCFed, logrfilename, sep="\t", col.names=FALSE)
     if (!is.na(out.dir)) write.table(bafPCFed, baffilename, sep="\t", col.names=FALSE)
     bafPCFed = as.matrix(bafPCFed)
     Tumor_LogR_segmented[, sample] = logRPCFed
     Tumor_BAF_segmented[[sample]] = 1-bafPCFed
   }
-
   ASCATobj$Tumor_LogR_segmented=Tumor_LogR_segmented
   ASCATobj$Tumor_BAF_segmented=Tumor_BAF_segmented
   ASCATobj$failedarrays=ascat.gg$failedarrays
   return(ASCATobj)
 }
+
+
+
 
 #' @title predictGermlineHomozygousStretches
 #' @description helper function to predict germline homozyguous segments for later re-segmentation
@@ -257,51 +270,42 @@ ascat.aspcf = function(ASCATobj, selectsamples = 1:length(ASCATobj$samples), asc
 #' @return germline homozyguous segments
 #'
 #'
-predictGermlineHomozygousStretches = function(chr, hom) {
-
-  # contains the result: a list of vectors of probe numbers in homozygous stretches for each sample
-  HomoStretches = list()
-
-  for (sam in 1:dim(hom)[2]) {
-    homsam = hom[, sam]
-
-    perchom = sum(homsam, na.rm=TRUE)/sum(!is.na(homsam))
-
-    # NOTE THAT A P-VALUE THRESHOLD OF 0.001 IS HARDCODED HERE
-    homthres = ceiling(log(0.001, perchom))
-
-    allhprobes = NULL
-    for (chrke in 1:length(chr)) {
-      hschr = homsam[chr[[chrke]]]
-
-      hprobes = vector(length=0)
-      for (probe in 1:length(hschr)) {
-        if (!is.na(hschr[probe])) {
-          if (hschr[probe]) {
-            hprobes = c(hprobes, probe)
-          } else {
-            if (length(hprobes)>=homthres) {
-              allhprobes = rbind(allhprobes, c(chrke, chr[[chrke]][min(hprobes)], chr[[chrke]][max(hprobes)]))
-            }
-            hprobes = vector(length=0)
-          }
-        }
-      }
-      # if the last probe is homozygous, this is not yet accounted for
-      if (!is.na(hschr[probe]) && hschr[probe]) {
-        if (length(hprobes)>=homthres) {
-          allhprobes = rbind(allhprobes, c(chrke, chr[[chrke]][min(hprobes)], chr[[chrke]][max(hprobes)]))
-        }
-      }
-
-    }
-
-    if (is.null(allhprobes)) allhprobes=rbind(NULL, c(0, 0, 0))
-    HomoStretches[[sam]]=allhprobes
-
-  }
-
-  return(HomoStretches)
+predictGermlineHomozygousStretches<- function(chr, hom)
+{
+	# contains the result: a list of vectors of probe numbers in homozygous stretches for each sample
+	HomoStretches = list()
+	for (sam in 1:dim(hom)[2]) {
+		homsam = hom[,sam]
+		perchom = sum(homsam,na.rm=T)/sum(!is.na(homsam))
+		# NOTE THAT A P-VALUE THRESHOLD OF 0.001 IS HARDCODED HERE
+		homthres = ceiling(log(0.001,perchom))
+		allhprobes = NULL
+		for (chrke in 1:length(chr)) {
+			hschr = homsam[chr[[chrke]]]
+			hprobes = vector(length=0)
+			for(probe in 1:length(hschr)) {
+				if(!is.na(hschr[probe])) {
+					if(hschr[probe]) {
+						hprobes = c(hprobes,probe)
+					}
+					else {
+						if(length(hprobes)>=homthres) {
+							allhprobes = rbind(allhprobes,c(chrke,chr[[chrke]][min(hprobes)],chr[[chrke]][max(hprobes)]))
+						}
+						hprobes = vector(length=0)
+					}
+				}
+			}
+			# if the last probe is homozygous, this is not yet accounted for
+			if(!is.na(hschr[probe]) & hschr[probe]) {
+				if(length(hprobes)>=homthres) {
+					allhprobes = rbind(allhprobes,c(chrke,chr[[chrke]][min(hprobes)],chr[[chrke]][max(hprobes)]))
+				}
+			}
+		}
+		HomoStretches[[sam]]=allhprobes
+	}
+	return(HomoStretches)
 }
 
 #
@@ -309,91 +313,119 @@ predictGermlineHomozygousStretches = function(chr, hom) {
 # Whole chromosomes/chromosome arms wrapper function
 #
 
-fastAspcf <- function(logR, allB, kmin, gamma, isTargetedSeq) {
-  if (is.null(isTargetedSeq)) isTargetedSeq=FALSE
-
-  N <- length(logR)
-  w <- 1000 #w: windowsize
-  d <- 100
-
-  startw = -d
-  stopw = w-d
-
-  nseg = 0
-  var2 = 0
-  var3 = 0
-  breakpts = 0
-  larger = TRUE
-  repeat {
-    from <- max(c(1, startw))
-    to  <-  min(c(stopw, N))
-    logRpart <- logR[from:to]
-    allBpart <- allB[from:to]
-    allBflip <- allBpart
-    allBflip[allBpart > 0.5] <- 1 - allBpart[allBpart > 0.5]
-
-    sd1 <- getMad(logRpart)
-    sd2 <- getMad(allBflip)
-    sd3 <- getMad(allBpart)
-
-    #Must check that sd1 and sd2 are defined and != 0:
-    sd.valid <- c(!is.na(sd1), !is.na(sd2), sd1!=0, sd2!=0)
-    if (all(sd.valid)) {
-      #run aspcfpart:
-      #part.res <- aspcfpart(logRpart=logRpart, allBflip=allBflip, a=startw, b=stopw, d=d, sd1=sd1, sd2=sd2, N=N, kmin=kmin, gamma=gamma)
-      part.res <- aspcfpart(logRpart=logRpart, allBflip=allBflip, a=startw, b=stopw, d=d, sd1=sd1, sd2=sd2, N=N, kmin=kmin, gamma=gamma)
-      breakptspart <- part.res$breakpts
-      # the 'larger' is (occasionally) necessary in the last window of the segmentation!
-      larger = breakptspart>breakpts[length(breakpts)]
-      breakpts <- c(breakpts, breakptspart[larger])
-      var2 <- var2 + sd2^2
-      var3 <- var3 + sd3^2
-      nseg = nseg+1
+fastAspcf <- function(logR,
+                      allB,
+                      kmin,
+                      gamma,
+                      isTargetedSeq=FALSE,
+                      allbafs)
+{
+    if (is.null(isTargetedSeq)) isTargetedSeq=F
+    isX <- any(grepl("^X_",names(allB)))
+    mult <- 1.5
+    if(isX)
+    {
+        print("X")
+        mult <- 2.5
     }
-
-    if (stopw < N+d) {
-      startw <- min(stopw-2*d + 1, N-2*d)
-      stopw <- startw + w
-    } else {
-      break
+    N <- length(logR)
+    w <- 1000 #w: windowsize
+    d <- 100
+    startw = -d
+    stopw = w-d
+    nseg = 0
+    var2 = 0
+    var3 = 0
+    breakpts = 0
+    larger = TRUE
+    repeat{
+        from <- max(c(1,startw))
+        to  <-  min(c(stopw,N))
+        logRpart <- logR[from:to]
+        allBpart <- allB[from:to]
+        allBflip <- allBpart
+        allBflip[allBpart > 0.5] <- 1 - allBpart[allBpart > 0.5]
+        sd1 <- getMad(logRpart)
+        sd2 <- getMad(allBflip)
+        sd3 <- getMad(allBpart)
+        ## Must check that sd1 and sd2 are defined and != 0:
+        sd.valid <- c(!is.na(sd1),!is.na(sd2),sd1!=0,sd2!=0)
+        if(all(sd.valid)){
+                                        #run aspcfpart:
+                                        #part.res <- aspcfpart(logRpart=logRpart, allBflip=allBflip, a=startw, b=stopw, d=d, sd1=sd1, sd2=sd2, N=N, kmin=kmin, gamma=gamma)
+            part.res <- aspcfpart(logRpart=logRpart,
+                                  allBflip=allBflip,
+                                  a=startw, b=stopw, d=d, sd1=sd1, sd2=sd2, N=N,
+                                  kmin=kmin, gamma=gamma)
+            breakptspart <- part.res$breakpts
+                                        # the 'larger' is (occasionally) necessary in the last window of the segmentation!
+            larger = breakptspart>breakpts[length(breakpts)]
+            breakpts <- c(breakpts, breakptspart[larger])
+            var2 <- var2 + sd2^2
+            var3 <- var3 + sd3^2
+            nseg = nseg+1
+        }
+        if(stopw < N+d){
+            startw <- min(stopw-2*d + 1,N-2*d)
+            stopw <- startw + w
+        }else{
+            break
+        }
+    }#end repeat
+    breakpts <- unique(c(breakpts, N))
+    if(nseg==0){nseg=1}  #just in case the sd-test never passes.
+    sd2 <- sqrt(var2/nseg)
+    sd3 <- sqrt(var3/nseg)
+    ## On each segment calculate mean of unflipped B allele data
+    frst <- breakpts[1:length(breakpts)-1] + 1
+    last <- breakpts[2:length(breakpts)]
+    nseg <- length(frst)
+    yhat1 <- rep(NA,N)
+    yhat2 <- rep(NA,N)
+    sdsegs <- unlist(lapply(1:22, function(x)
+    {
+        thebafs=allbafs[grepl(paste0(x,"_"),names(allbafs))]
+        if(length(thebafs)>10)
+        {
+            split_indices <- split(1:length(thebafs), cut(seq_along(1:length(thebafs)), 4, labels = FALSE))
+            return(sapply(split_indices,function(y) {
+                if(mean(abs(thebafs[y]-0.5)<0.15)<.5)
+                    return(NULL)
+                sd(thebafs[y])
+            }))
+        }
+        else
+            return(sd(thebafs))
+    }))
+    sdsegs <- find_first_gaussian_peak(sdsegs)
+    ##for(i in 1:3)
+    ##    sdsegs <- sdsegs[(sdsegs-mean(sdsegs))/sd(sdsegs)<2.3 & sdsegs<median(sdsegs)*1.8]
+    for(i in 1:nseg)
+    {
+        yhat1[frst[i]:last[i]] <- rep(mean(logR[frst[i]:last[i]]), last[i]-frst[i]+1)
+        yi2 <- allB[frst[i]:last[i]]
+        ## Center data around zero (by subtracting 0.5) and estimate mean
+        noreset <- mean(abs(yi2-0.5)<0.12)<.5
+        if(length(yi2)== 0 & !noreset)
+        {
+            mu <- 0
+        }
+        else
+        {
+            mu <- mean(abs(yi2-0.5))
+        }
+        .sd <- sd(yi2)
+        ## Make a (slightly arbitrary) decision concerning branches
+        ## This may be improved by a test of equal variances
+        ##if (sqrt(sd2^2 + mu^2) < 2 * sd2)
+        try(if((.sd-mean(sdsegs))/sd(sdsegs)<mult & !noreset)
+        {
+            mu <- 0
+        })
+        yhat2[frst[i]:last[i]] <- rep(mu+0.5,last[i]-frst[i]+1)
     }
-
-  }#end repeat
-  breakpts <- unique(c(breakpts, N))
-  if (nseg==0) { nseg=1 }  #just in case the sd-test never passes.
-  sd2 <- sqrt(var2/nseg)
-  sd3 <- sqrt(var3/nseg)
-
-  # On each segment calculate mean of unflipped B allele data
-  frst <- breakpts[1:length(breakpts)-1] + 1
-  last <- breakpts[2:length(breakpts)]
-  nseg <- length(frst)
-
-  yhat1 <- rep(NA, N)
-  yhat2 <- rep(NA, N)
-
-  for (i in 1:nseg) {
-    yhat1[frst[i]:last[i]] <- rep(mean(logR[frst[i]:last[i]]), last[i]-frst[i]+1)
-    yi2 <- allB[frst[i]:last[i]]
-    # Center data around zero (by subtracting 0.5) and estimate mean
-    if (length(yi2)== 0) {
-      mu <- 0
-    } else {
-      mu <- mean(abs(yi2-0.5))
-    }
-
-    # Make a (slightly arbitrary) decision concerning branches
-    # This may be improved by a test of equal variances
-    if (sqrt(sd2^2+mu^2) < 2*sd2) {
-      # if (sd3 < 1.8*sd2) {
-      mu <- 0
-    }
-    if (isTargetedSeq && mu<=0.05) mu=0
-    yhat2[frst[i]:last[i]] <- rep(mu+0.5, last[i]-frst[i]+1)
-  }
-  return(list(yhat1=yhat1, yhat2=yhat2))
-
-}#end fastAspcf
+    return(list(yhat1=yhat1,yhat2=yhat2))
+}
 
 
 
