@@ -165,7 +165,12 @@ save(ascat.bc, ascat.output, QC, file = 'ASCAT_objects.Rdata')
 
 
 First run as you normally would to generate LogR and BAF
-files on both tumour and normal samples! 
+files on both tumour and normal samples. 
+
+/!\ important /!\ make sure to get it from
+both independently, as a typical tumour/normal run will yield logR=0
+for normal! /!\ important /!\
+
 Visualise the LogR and BAF to identify clean diploid controls in your
 runs (ideally females but you can include males if needed). Collect
 the paths to their corresponding LogR files (PATH_LOGR_CONTROLS_FEMALES).
